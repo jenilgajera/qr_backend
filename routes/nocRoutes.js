@@ -7,12 +7,12 @@ const path = require('path');
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, 'uploads/photos');
+    cb(null, 'uploads/photos'); // Save files to the 'uploads/photos' directory
   },
   filename: (req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    cb(null, file.fieldname + '-' + uniqueSuffix + ext); // Generate unique filenames
   }
 });
 
@@ -37,5 +37,8 @@ router.get('/qr/:nocId', nocController.getQRCode);
 
 // Download PDF
 router.get('/pdf/:nocId', nocController.downloadPdf);
+
+// Fetch all NOC details
+router.get('/all', nocController.getAllNocs);
 
 module.exports = router;

@@ -2,17 +2,8 @@ const Noc = require('../models/Noc');
 const QRCode = require('qrcode');
 const PDFDocument = require('pdfkit');
 const { v4: uuidv4 } = require('uuid');
-const stream = require('stream');
-
-// You'll need to set up a cloud storage solution
-// This example assumes AWS S3, but you can use any cloud storage service
-// Add AWS SDK or your preferred cloud storage SDK to your dependencies
-const AWS = require('aws-sdk');
-const s3 = new AWS.S3({
-  accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-  region: process.env.AWS_REGION
-});
+const fs = require('fs');
+const path = require('path');
 
 // Register NOC
 exports.registerNoc = async (req, res) => {
@@ -23,36 +14,22 @@ exports.registerNoc = async (req, res) => {
 
     // Generate NOC number
     const nocNumber = await Noc.generateNocNumber();
-    
-    // Upload photo to S3
-    const photoKey = `photos/${uuidv4()}-${req.file.originalname}`;
-    const photoUploadParams = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: photoKey,
-      Body: req.file.buffer,
-      ContentType: req.file.mimetype,
-      ACL: 'public-read'
-    };
-    
-    const photoUploadResult = await s3.upload(photoUploadParams).promise();
-    const photoUrl = photoUploadResult.Location;
-    
+
+    // Save photo locally
+    const photoFileName = `photo-${uuidv4()}${path.extname(req.file.originalname)}`;
+    const photoPath = path.join(__dirname, '../uploads/photos', photoFileName);
+    fs.writeFileSync(photoPath, req.file.buffer);
+    const photoUrl = `/uploads/photos/${photoFileName}`;
+
     // Generate QR code that points to PDF download
     const qrCodeBuffer = await generateQRCode(`${req.protocol}://${req.get('host')}/api/noc/pdf/${nocNumber}`);
-    
-    // Upload QR code to S3
-    const qrCodeKey = `qrcodes/${uuidv4()}.png`;
-    const qrCodeUploadParams = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: qrCodeKey,
-      Body: qrCodeBuffer,
-      ContentType: 'image/png',
-      ACL: 'public-read'
-    };
-    
-    const qrCodeUploadResult = await s3.upload(qrCodeUploadParams).promise();
-    const qrCodeUrl = qrCodeUploadResult.Location;
-    
+
+    // Save QR code locally
+    const qrCodeFileName = `qrcode-${uuidv4()}.png`;
+    const qrCodePath = path.join(__dirname, '../uploads/qrcodes', qrCodeFileName);
+    fs.writeFileSync(qrCodePath, qrCodeBuffer);
+    const qrCodeUrl = `/uploads/qrcodes/${qrCodeFileName}`;
+
     // Create new NOC document
     const noc = new Noc({
       fullName: req.body.fullName,
@@ -70,31 +47,25 @@ exports.registerNoc = async (req, res) => {
       nocNumber: nocNumber,
       qrCodeUrl: qrCodeUrl
     });
-    
+
     await noc.save();
-    
-    // Generate PDF and upload to S3
+
+    // Generate PDF and save locally
     const pdfBuffer = await generateNocPdf(noc);
-    const pdfKey = `pdfs/${nocNumber}.pdf`;
-    const pdfUploadParams = {
-      Bucket: process.env.S3_BUCKET_NAME,
-      Key: pdfKey,
-      Body: pdfBuffer,
-      ContentType: 'application/pdf',
-      ACL: 'public-read'
-    };
-    
-    const pdfUploadResult = await s3.upload(pdfUploadParams).promise();
-    
+    const pdfFileName = `${nocNumber}.pdf`;
+    const pdfPath = path.join(__dirname, '../uploads/pdfs', pdfFileName);
+    fs.writeFileSync(pdfPath, pdfBuffer);
+    const pdfUrl = `/uploads/pdfs/${pdfFileName}`;
+
     // Update NOC with PDF URL
-    noc.pdfUrl = pdfUploadResult.Location;
+    noc.pdfUrl = pdfUrl;
     await noc.save();
-    
-    res.status(201).json({ 
+
+    res.status(201).json({
       message: 'NOC registered successfully',
       nocId: nocNumber
     });
-    
+
   } catch (error) {
     console.error('Error registering NOC:', error);
     res.status(500).json({ message: 'Server error. Please try again.' });
@@ -105,16 +76,35 @@ exports.registerNoc = async (req, res) => {
 exports.getQRCode = async (req, res) => {
   try {
     const noc = await Noc.findOne({ nocNumber: req.params.nocId });
-    
+
     if (!noc) {
       return res.status(404).json({ message: 'NOC not found' });
     }
-    
-    // Redirect to the QR code URL
-    res.redirect(noc.qrCodeUrl);
-    
+
+    // Serve the QR code file
+    const qrCodePath = path.join(__dirname, '..', noc.qrCodeUrl);
+    res.sendFile(qrCodePath);
+
   } catch (error) {
     console.error('Error fetching QR code:', error);
+    res.status(500).json({ message: 'Server error. Please try again.' });
+  }
+};
+
+// Fetch all NOC details
+exports.getAllNocs = async (req, res) => {
+  try {
+    // Fetch all NOC records from the database
+    const nocs = await Noc.find({}).sort({ createdAt: -1 }); // Sort by creation date (newest first)
+
+    // Return the NOC records
+    res.status(200).json({
+      message: 'NOC details fetched successfully',
+      data: nocs
+    });
+
+  } catch (error) {
+    console.error('Error fetching NOC details:', error);
     res.status(500).json({ message: 'Server error. Please try again.' });
   }
 };
@@ -123,14 +113,15 @@ exports.getQRCode = async (req, res) => {
 exports.downloadPdf = async (req, res) => {
   try {
     const noc = await Noc.findOne({ nocNumber: req.params.nocId });
-    
+
     if (!noc) {
       return res.status(404).json({ message: 'NOC not found' });
     }
-    
-    // Redirect to the PDF URL
-    res.redirect(noc.pdfUrl);
-    
+
+    // Serve the PDF file
+    const pdfPath = path.join(__dirname, '..', noc.pdfUrl);
+    res.sendFile(pdfPath);
+
   } catch (error) {
     console.error('Error downloading PDF:', error);
     res.status(500).json({ message: 'Server error. Please try again.' });
@@ -153,11 +144,11 @@ async function generateNocPdf(noc) {
     try {
       const doc = new PDFDocument({ size: 'A4' });
       const buffers = [];
-      
+
       // Collect PDF data chunks
       doc.on('data', (chunk) => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
-      
+
       // Add header
       doc.fontSize(18).text('NO OBJECTION CERTIFICATE', { align: 'center' });
       doc.moveDown();
@@ -166,9 +157,8 @@ async function generateNocPdf(noc) {
 
       // Add photo if exists
       if (noc.photoUrl) {
-        // Fetch photo from S3
-        const photoResponse = await fetch(noc.photoUrl);
-        const photoBuffer = await photoResponse.buffer();
+        const photoPath = path.join(__dirname, '..', noc.photoUrl);
+        const photoBuffer = fs.readFileSync(photoPath);
         doc.image(photoBuffer, { width: 100, align: 'right' });
       }
 
@@ -201,9 +191,8 @@ async function generateNocPdf(noc) {
       doc.fontSize(12).text('Scan to verify this certificate:', { align: 'center' });
 
       if (noc.qrCodeUrl) {
-        // Fetch QR code from S3
-        const qrResponse = await fetch(noc.qrCodeUrl);
-        const qrBuffer = await qrResponse.buffer();
+        const qrCodePath = path.join(__dirname, '..', noc.qrCodeUrl);
+        const qrBuffer = fs.readFileSync(qrCodePath);
         doc.image(qrBuffer, { width: 150, align: 'center' });
       }
 
@@ -230,6 +219,6 @@ function getIdProofTypeName(type) {
     'driving': 'Driving License',
     'voter': 'Voter ID'
   };
-  
+
   return types[type] || type;
 }
