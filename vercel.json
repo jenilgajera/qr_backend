@@ -2,7 +2,7 @@
   "version": 2,
   "builds": [
     {
-      "src": ".js",
+      "src": "index.js",
       "use": "@vercel/node"
     }
   ],
@@ -11,5 +11,13 @@
       "src": "/(.*)",
       "dest": "/"
     }
-  ]
+  ],
+  "functions": {
+    "api/noc/register.js": {
+      "maxDuration": 30 
+    },
+    "api/noc/all.js": {
+      "maxDuration": 30 
+    }
+  }
 }

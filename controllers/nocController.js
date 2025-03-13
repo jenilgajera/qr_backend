@@ -92,15 +92,31 @@ exports.getQRCode = async (req, res) => {
 };
 
 // Fetch all NOC details
+// Fetch all NOC details
 exports.getAllNocs = async (req, res) => {
   try {
-    // Fetch all NOC records from the database
-    const nocs = await Noc.find({}).sort({ createdAt: -1 }); // Sort by creation date (newest first)
+    // Fetch all NOC records from the database with pagination
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 10;
+    const skip = (page - 1) * limit;
 
-    // Return the NOC records
+    const nocs = await Noc.find({})
+      .sort({ createdAt: -1 }) // Sort by creation date (newest first)
+      .skip(skip)
+      .limit(limit);
+
+    const total = await Noc.countDocuments();
+
+    // Return the NOC records with pagination metadata
     res.status(200).json({
       message: 'NOC details fetched successfully',
-      data: nocs
+      data: nocs,
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
     });
 
   } catch (error) {

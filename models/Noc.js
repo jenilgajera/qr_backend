@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 
-// Create a lightweight schema to minimize initialization time
 const nocSchema = new mongoose.Schema({
   nocNumber: {
     type: String,
@@ -19,19 +18,14 @@ const nocSchema = new mongoose.Schema({
   idProofType: { type: String, required: true },
   idProofNumber: { type: String, required: true },
   address: { type: String, required: true },
-  
-  // Store URLs for uploaded files
   photoUrl: { type: String },
   qrCodeUrl: { type: String },
   pdfUrl: { type: String },
-  
   status: {
     type: String,
     enum: ['pending', 'active', 'expired', 'revoked'],
     default: 'pending'
-  },
-  
-  // Use timestamps option instead of manual fields
+  }
 }, { timestamps: true });
 
 // Fast method to generate NOC number without database lookup
@@ -41,8 +35,6 @@ nocSchema.statics.generateNocNumber = function() {
   const month = (date.getMonth() + 1).toString().padStart(2, '0');
   const day = date.getDate().toString().padStart(2, '0');
   const timestamp = date.getTime().toString().slice(-6);
-  
-  // Format: NOC-YY-MM-DD-XXXXXX
   return `NOC-${year}-${month}-${day}-${timestamp}`;
 };
 
