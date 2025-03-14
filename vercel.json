@@ -9,15 +9,7 @@
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "/"
+      "dest": "index.js"
     }
-  ],
-  "functions": {
-    "api/noc/register.js": {
-      "maxDuration": 30 
-    },
-    "api/noc/all.js": {
-      "maxDuration": 30 
-    }
-  }
+  ]
 }
